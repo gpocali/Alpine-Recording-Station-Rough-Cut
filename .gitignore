@@ -1,0 +1,25 @@
+# Virtual Environments
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Runtime & workspace artifacts
+workspace_data/
+uploads/
+outputs/
+sessions/
+models_cache/
+*.ars.json
+
+# OS files
+.DS_Store
+Thumbs.db

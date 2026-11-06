@@ -1,0 +1,794 @@
+/* Alpine Recording Station — Studio UI Stylesheet
+   Follows modern-web-guidance for dark-mode, progress, forms, and brand-consistent-forms. */
+
+:root {
+  /* Raw Light & Dark Design Tokens */
+  --bg-canvas-light: #f4f6fa;
+  --bg-canvas-dark: #0e131b;
+  --bg-panel-light: #ffffff;
+  --bg-panel-dark: #151c28;
+  --bg-subtle-light: #eaf0f8;
+  --bg-subtle-dark: #1d2636;
+  --text-main-light: #101726;
+  --text-main-dark: #e9eef7;
+  --text-muted-light: #4b566b;
+  --text-muted-dark: #97a6c0;
+  --border-light: #ccd5e3;
+  --border-dark: #2a374e;
+
+  /* High-contrast Brand & Accent Colors */
+  --brand-light: #0056d2;
+  --brand-dark: #4da3ff;
+  --brand-text-light: #ffffff;
+  --brand-text-dark: #081221;
+  --accent-emerald-light: #0a7b56;
+  --accent-emerald-dark: #38d996;
+  --danger-light: #c92a2a;
+  --danger-dark: #ff6b6b;
+
+  /* Scrollbar raw colors */
+  --sb-thumb-light: #8d9bb0;
+  --sb-thumb-dark: #495975;
+  --sb-track-light: #e6ebf2;
+  --sb-track-dark: #141b26;
+
+  /* Default (Light) fallback assignment */
+  --bg-canvas: var(--bg-canvas-light);
+  --bg-panel: var(--bg-panel-light);
+  --bg-subtle: var(--bg-subtle-light);
+  --text-main: var(--text-main-light);
+  --text-muted: var(--text-muted-light);
+  --border-color: var(--border-light);
+  --brand-color: var(--brand-light);
+  --brand-text: var(--brand-text-light);
+  --accent-emerald: var(--accent-emerald-light);
+  --danger-color: var(--danger-light);
+  --scrollbar-thumb: var(--sb-thumb-light);
+  --scrollbar-track: var(--sb-track-light);
+
+  /* MANDATORY fallback for browsers without light-dark() support */
+  @media (prefers-color-scheme: dark) {
+    --bg-canvas: var(--bg-canvas-dark);
+    --bg-panel: var(--bg-panel-dark);
+    --bg-subtle: var(--bg-subtle-dark);
+    --text-main: var(--text-main-dark);
+    --text-muted: var(--text-muted-dark);
+    --border-color: var(--border-dark);
+    --brand-color: var(--brand-dark);
+    --brand-text: var(--brand-text-dark);
+    --accent-emerald: var(--accent-emerald-dark);
+    --danger-color: var(--danger-dark);
+    --scrollbar-thumb: var(--sb-thumb-dark);
+    --scrollbar-track: var(--sb-track-dark);
+  }
+
+  /* Modern light-dark() color adaptation */
+  @supports (color: light-dark(white, black)) {
+    --bg-canvas: light-dark(var(--bg-canvas-light), var(--bg-canvas-dark));
+    --bg-panel: light-dark(var(--bg-panel-light), var(--bg-panel-dark));
+    --bg-subtle: light-dark(var(--bg-subtle-light), var(--bg-subtle-dark));
+    --text-main: light-dark(var(--text-main-light), var(--text-main-dark));
+    --text-muted: light-dark(var(--text-muted-light), var(--text-muted-dark));
+    --border-color: light-dark(var(--border-light), var(--border-dark));
+    --brand-color: light-dark(var(--brand-light), var(--brand-dark));
+    --brand-text: light-dark(var(--brand-text-light), var(--brand-text-dark));
+    --accent-emerald: light-dark(var(--accent-emerald-light), var(--accent-emerald-dark));
+    --danger-color: light-dark(var(--danger-light), var(--danger-dark));
+    --scrollbar-thumb: light-dark(var(--sb-thumb-light), var(--sb-thumb-dark));
+    --scrollbar-track: light-dark(var(--sb-track-light), var(--sb-track-dark));
+  }
+
+  /* MANDATORY: Apply color-scheme to :root for viewport-wide theming */
+  color-scheme: light dark;
+  accent-color: var(--brand-color);
+  /* Pair scrollbar-color with scrollbar-width (never transition scrollbar-color due to WebKit flicker bug) */
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+/* Legacy fallback for WebKit/Blink browsers without scrollbar-color */
+@supports not (scrollbar-color: auto) {
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 5px;
+  }
+  *::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 1rem;
+  line-height: 1.5;
+  background-color: var(--bg-canvas);
+  color: var(--text-main);
+  accent-color: var(--brand-color);
+}
+
+/* Header */
+.app-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.9rem 1.5rem;
+  background-color: var(--bg-panel);
+  border-block-end: 1px solid var(--border-color);
+}
+
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.brand-badge {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.6rem;
+  background: var(--brand-color);
+  color: var(--brand-text);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.subtitle {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.status-pill {
+  font-size: 0.8rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-color);
+}
+
+/* Main Workspace Layout */
+.workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(360px, 460px) 1fr;
+  gap: 1.25rem;
+  padding: 1.25rem;
+  max-width: 1760px;
+  margin-inline: auto;
+}
+
+@media (max-width: 1120px) {
+  .workspace-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.panel {
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+}
+
+.panel-header-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-block-end: 0.85rem;
+}
+
+.panel-title {
+  margin-block: 0 0.9rem;
+  font-size: 1.1rem;
+}
+
+.panel-header-bar .panel-title {
+  margin-block-end: 0;
+}
+
+/* Forms & Fieldsets (following modern-web-guidance `forms`) */
+.form-fieldset {
+  border: 1px solid var(--border-color);
+  border-radius: 0.6rem;
+  padding: 0.9rem 1rem;
+  margin-block-end: 1rem;
+}
+
+.form-fieldset legend {
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding-inline: 0.4rem;
+}
+
+/* Gestalt Proximity Rule: vertical margin between label and input is smaller than margin between form groups */
+.form-group {
+  margin-block-end: 1rem;
+}
+
+.form-group:last-child {
+  margin-block-end: 0;
+}
+
+label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-block-end: 0.3rem;
+}
+
+input[type="text"],
+input[type="password"],
+input[type="file"],
+select,
+textarea {
+  width: 100%;
+  font-size: 1rem;
+  padding: 0.6rem 0.75rem;
+  min-height: 48px;
+  border-radius: 0.45rem;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-canvas);
+  color: var(--text-main);
+}
+
+textarea {
+  min-height: 4.5rem;
+  resize: vertical;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible,
+summary:focus-visible {
+  outline: 3px solid var(--brand-color);
+  outline-offset: 2px;
+}
+
+/* Non-intrusive user-invalid styling */
+input:invalid:user-invalid {
+  border-color: var(--danger-color);
+}
+
+.field-hint {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-block-start: 0.25rem;
+}
+
+.form-row-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem;
+}
+
+.form-row-4col {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+  gap: 0.85rem;
+}
+
+/* Radio Card Group */
+.radio-card-group {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.radio-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  background-color: var(--bg-subtle);
+  cursor: pointer;
+  margin-block-end: 0;
+}
+
+.radio-card input[type="radio"] {
+  margin-block-start: 0.25rem;
+  width: 1.15rem;
+  height: 1.15rem;
+  flex-shrink: 0;
+}
+
+.radio-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.radio-card-body small {
+  font-weight: 400;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+/* Checkboxes */
+.checkbox-stack {
+  display: grid;
+  gap: 0.5rem;
+  margin-block: 0.6rem 0.9rem;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-weight: 500;
+  cursor: pointer;
+  margin-block-end: 0;
+}
+
+.checkbox-row input[type="checkbox"] {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex-shrink: 0;
+}
+
+/* Fallback for older browsers without accent-color per modern-web-guidance `brand-consistent-forms` */
+@supports not (accent-color: var(--brand-color)) {
+  form input[type="checkbox"].visually-hidden-fallback {
+    position: absolute !important;
+    clip-path: inset(50%) !important;
+    overflow: hidden !important;
+    width: 1px !important;
+    height: 1px !important;
+    margin: -1px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    white-space: nowrap !important;
+  }
+
+  .checkbox-row {
+    position: relative;
+    padding-inline-start: 1.8rem;
+  }
+
+  input[type="checkbox"].visually-hidden-fallback + span::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 1.2rem;
+    height: 1.2rem;
+    border: 2px solid var(--border-color);
+    background: var(--bg-canvas);
+    border-radius: 4px;
+  }
+
+  input[type="checkbox"].visually-hidden-fallback:checked + span::before {
+    background-color: var(--brand-color);
+    border-color: var(--brand-color);
+  }
+
+  input[type="checkbox"].visually-hidden-fallback:checked + span::after {
+    content: "✓";
+    position: absolute;
+    left: 0.25rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--brand-text);
+    font-weight: bold;
+    font-size: 0.85rem;
+  }
+}
+
+/* Range Inputs */
+input[type="range"] {
+  width: 100%;
+  min-height: 36px;
+  cursor: pointer;
+}
+
+/* Advanced Details */
+.advanced-details {
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  padding: 0.6rem 0.9rem;
+  margin-block-end: 1rem;
+  background-color: var(--bg-subtle);
+}
+
+.advanced-details summary {
+  font-weight: 600;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.details-body {
+  margin-block-start: 0.75rem;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 48px;
+  padding: 0.6rem 1rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  border-radius: 0.5rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+
+.btn:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background-color: var(--brand-color);
+  color: var(--brand-text);
+}
+
+.btn-accent {
+  background-color: var(--accent-emerald);
+  color: #ffffff;
+}
+
+.btn-secondary {
+  background-color: var(--bg-subtle);
+  color: var(--text-main);
+  border-color: var(--border-color);
+}
+
+.btn-sm {
+  min-height: 34px;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.82rem;
+}
+
+.btn-block {
+  width: 100%;
+}
+
+/* Styled <progress> Bar (Compliant with modern-web-guidance `progress`) */
+.progress-box {
+  margin-block-start: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.6rem;
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--border-color);
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-block-end: 0.4rem;
+}
+
+.progress-header label {
+  margin-block-end: 0;
+  font-size: 0.88rem;
+}
+
+.progress-pct {
+  font-weight: 700;
+  font-size: 0.88rem;
+}
+
+progress {
+  appearance: none;
+  border: 0 solid;
+  overflow: clip;
+  width: 100%;
+  inline-size: 100%;
+  height: 0.85rem;
+  --progress-bar-radius: 1e5px;
+  --progress-bar-track: var(--bg-canvas);
+  --progress-bar-fill: var(--brand-color);
+  border-radius: var(--progress-bar-radius);
+  background: var(--progress-bar-track);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.15);
+  /* Lets the fill position itself in track units (cqi) */
+  container-type: inline-size;
+  --progress-bar-indeterminate-size: 30%;
+  --progress-bar-indeterminate-animation-duration: 1.5s;
+
+  @media (prefers-reduced-motion: reduce) {
+    --progress-bar-indeterminate-animation-duration: 10s;
+  }
+}
+
+progress:indeterminate {
+  --progress-bar-animation: var(
+    --progress-bar-indeterminate-animation,
+    progress-bar-indeterminate var(--progress-bar-indeterminate-animation-duration) infinite linear
+  );
+}
+
+progress:dir(rtl) {
+  --progress-bar-indeterminate-animation: progress-bar-indeterminate var(--progress-bar-indeterminate-animation-duration) infinite linear reverse;
+}
+
+progress::-webkit-progress-bar {
+  background: transparent;
+}
+
+/* Separate rules for -webkit- and -moz- pseudo-elements (MANDATORY per modern-web-guidance) */
+progress::-webkit-progress-value {
+  background: var(--progress-bar-fill);
+  border-radius: var(--progress-bar-radius);
+  transition: inline-size 0.3s;
+  animation: var(--progress-bar-animation, revert-rule);
+}
+
+progress::-moz-progress-bar {
+  background: var(--progress-bar-fill);
+  border-radius: var(--progress-bar-radius);
+  transition: inline-size 0.3s;
+  animation: var(--progress-bar-animation, revert-rule);
+}
+
+@keyframes progress-bar-indeterminate {
+  from,
+  to {
+    inline-size: var(--progress-bar-indeterminate-size);
+    margin-right: auto;
+  }
+  from {
+    translate: -100%;
+  }
+  to {
+    translate: 100cqi;
+  }
+}
+
+.status-subtext {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-block-start: 0.4rem;
+}
+
+/* Metrics Strip */
+.metrics-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.65rem;
+  margin-block-end: 1rem;
+}
+
+.metric-card {
+  padding: 0.65rem 0.8rem;
+  border-radius: 0.5rem;
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.metric-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.metric-card strong {
+  font-size: 0.95rem;
+}
+
+/* Waveform Canvas */
+.waveform-section {
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--border-color);
+  border-radius: 0.6rem;
+  padding: 0.8rem;
+  margin-block-end: 1rem;
+}
+
+.waveform-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  font-size: 0.8rem;
+  margin-block-end: 0.5rem;
+}
+
+.swatch {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-inline-end: 0.3rem;
+}
+
+.swatch-kept {
+  background-color: #2ecc71;
+}
+.swatch-rejected {
+  background-color: #e67e22;
+}
+.swatch-talkback {
+  background-color: #e74c3c;
+}
+.swatch-breath {
+  background-color: #9b59b6;
+}
+
+#waveform-canvas {
+  width: 100%;
+  height: 175px;
+  display: block;
+  border-radius: 0.4rem;
+  background-color: #0b1017;
+  border: 1px solid var(--border-color);
+}
+
+.audio-preview-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.85rem;
+  margin-block-start: 0.65rem;
+}
+
+#vo-audio-player {
+  flex: 1 1 280px;
+  height: 38px;
+}
+
+/* Export Buttons */
+.export-buttons-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-block-start: 0.8rem;
+}
+
+/* Inspector Lists */
+.inspector-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 900px) {
+  .inspector-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.subpanel-title {
+  margin-block: 0 0.25rem;
+  font-size: 0.98rem;
+}
+
+.scroll-list {
+  max-height: 440px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding-inline-end: 0.25rem;
+  margin-block-start: 0.5rem;
+}
+
+.take-group-card,
+.clip-card {
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  background-color: var(--bg-subtle);
+}
+
+.take-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin-block-end: 0.4rem;
+}
+
+.talkback-banner {
+  font-size: 0.8rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 0.35rem;
+  background-color: rgb(231 76 60 / 0.14);
+  border-inline-start: 3px solid #e74c3c;
+  margin-block-end: 0.5rem;
+}
+
+.take-item {
+  border: 1px solid var(--border-color);
+  border-radius: 0.4rem;
+  padding: 0.55rem 0.65rem;
+  margin-block-top: 0.45rem;
+  background-color: var(--bg-panel);
+}
+
+.take-item.is-selected {
+  border-color: var(--accent-emerald);
+  box-shadow: inset 3px 0 0 var(--accent-emerald);
+}
+
+.take-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+}
+
+.take-text {
+  margin-block: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.take-meta {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--border-color);
+}
+
+.badge-success {
+  background-color: rgb(46 204 113 / 0.18);
+  color: var(--accent-emerald);
+  border-color: var(--accent-emerald);
+}
+
+.badge-warn {
+  background-color: rgb(230 126 34 / 0.16);
+  color: #e67e22;
+  border-color: #e67e22;
+}
+
+.empty-state {
+  padding: 1.5rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}

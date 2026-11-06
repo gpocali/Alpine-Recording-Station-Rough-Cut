@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- MANDATORY per modern-web-guidance dark-mode: Declare support for both light and dark themes -->
+  <meta name="color-scheme" content="light dark">
+  <title>Alpine Recording Station — AI Rough Cut Audio Editor</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand-lockup">
+      <div class="brand-badge" aria-hidden="true">ARS</div>
+      <div>
+        <h1>Alpine Recording Station — Rough Cut</h1>
+        <p class="subtitle">AI Voiceover Take Selector, Studio Talkback Isolator &amp; Adobe Audition Multitrack Assembler</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <span id="system-health-pill" class="status-pill">Checking Audio Engine...</span>
+      <button type="button" id="btn-demo-studio" class="btn btn-secondary">Load Studio Mode Demo</button>
+      <button type="button" id="btn-demo-normal" class="btn btn-secondary">Load Normal Mode Demo</button>
+    </div>
+  </header>
+
+  <main class="workspace-grid">
+    <!-- LEFT COLUMN: Input Configuration & Processing Form -->
+    <section class="panel config-panel" aria-labelledby="setup-heading">
+      <h2 id="setup-heading" class="panel-title">1. Source Recording &amp; AI Analysis Setup</h2>
+
+      <form id="process-form" action="/api/process" method="POST" enctype="multipart/form-data" novalidate>
+        <!-- File Selection & Output Naming -->
+        <fieldset class="form-fieldset">
+          <legend>Source Audio &amp; Output Naming</legend>
+
+          <div class="form-group">
+            <label for="audio-file-input">Select Rough Studio Recording (WAV, FLAC, MP3, M4A, OGG)</label>
+            <input
+              type="file"
+              id="audio-file-input"
+              name="file"
+              accept=".wav,.flac,.mp3,.ogg,.m4a,.aac,.aiff,audio/*"
+              aria-describedby="file-help"
+              required
+            >
+            <span id="file-help" class="field-hint">
+              Select a voiceover recording, or use the Studio/Normal Demo buttons above to test immediately.
+            </span>
+          </div>
+
+          <div class="form-group">
+            <label for="output-name-input">Output Base Filename</label>
+            <input
+              type="text"
+              id="output-name-input"
+              name="output_name"
+              value="Alpine_VO_Rough_Cut"
+              required
+              maxlength="120"
+              autocorrect="off"
+              autocapitalize="off"
+              spellcheck="false"
+              aria-describedby="output-name-help"
+            >
+            <span id="output-name-help" class="field-hint">
+              Used for exported master audio, Adobe Audition <code>.sesx</code> project, and preserved edit session files.
+            </span>
+          </div>
+        </fieldset>
+
+        <!-- Recording Mode Selection (Radio buttons per modern-web-guidance forms matrix: < 6 mutually exclusive choices) -->
+        <fieldset class="form-fieldset">
+          <legend>Recording Channel Mode</legend>
+
+          <div class="radio-card-group">
+            <label for="mode-normal" class="radio-card">
+              <input type="radio" id="mode-normal" name="mode" value="normal">
+              <span class="radio-card-body">
+                <strong>Normal Mode (Mono or Stereo Mic)</strong>
+                <small>Standard single-mic or stereo voiceover recording without a separate talkback channel.</small>
+              </span>
+            </label>
+
+            <label for="mode-studio" class="radio-card">
+              <input type="radio" id="mode-studio" name="mode" value="studio" checked>
+              <span class="radio-card-body">
+                <strong>Studio Mode (Left: VO Mic | Right: Tone-Bounded Talkback)</strong>
+                <small>Left channel is voiceover; Right channel is talkback bounded by start/end audio tones. Talkback notes guide take selection and are strictly excluded from all output audio.</small>
+              </span>
+            </label>
+          </div>
+        </fieldset>
+
+        <!-- Speech-to-Text, Breath Removal & Grammatical Pacing -->
+        <fieldset class="form-fieldset">
+          <legend>Speech-to-Text, Breath Removal &amp; Grammatical Pacing</legend>
+
+          <div class="form-row-2col">
+            <div class="form-group">
+              <label for="whisper-model-select">Whisper STT Model</label>
+              <select id="whisper-model-select" name="whisper_model">
+                <option value="tiny.en">tiny.en (Fastest)</option>
+                <option value="base.en" selected>base.en (Recommended Balance)</option>
+                <option value="small.en">small.en (High Accuracy)</option>
+                <option value="medium.en">medium.en (Studio Precision)</option>
+                <option value="large-v3">large-v3 (Multilingual / Max)</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="breath-sensitivity-range">
+                Breath Detection Sensitivity: <output id="breath-sens-output" for="breath-sensitivity-range">65%</output>
+              </label>
+              <input
+                type="range"
+                id="breath-sensitivity-range"
+                name="breath_sensitivity"
+                min="10"
+                max="95"
+                value="65"
+              >
+            </div>
+          </div>
+
+          <div class="checkbox-stack">
+            <label for="remove-breaths-check" class="checkbox-row">
+              <input type="checkbox" id="remove-breaths-check" name="remove_breaths" class="visually-hidden-fallback" checked>
+              <span>Remove breaths, inhalations, and mouth clicks between words</span>
+            </label>
+
+            <label for="room-tone-check" class="checkbox-row">
+              <input type="checkbox" id="room-tone-check" name="use_room_tone_padding" class="visually-hidden-fallback" checked>
+              <span>Pad grammatical pauses with natural studio room-tone (prevents dead-air gating dropouts)</span>
+            </label>
+          </div>
+
+          <div class="form-row-2col">
+            <div class="form-group">
+              <label for="comma-mult-range">
+                Comma Pause Multiplier: <output id="comma-mult-output" for="comma-mult-range">3.2x</output>
+              </label>
+              <input
+                type="range"
+                id="comma-mult-range"
+                name="comma_pause_multiplier"
+                min="1.5"
+                max="5.5"
+                step="0.1"
+                value="3.2"
+                aria-describedby="pacing-help"
+              >
+            </div>
+
+            <div class="form-group">
+              <label for="period-mult-range">
+                Period Pause Multiplier: <output id="period-mult-output" for="period-mult-range">6.8x</output>
+              </label>
+              <input
+                type="range"
+                id="period-mult-range"
+                name="period_pause_multiplier"
+                min="3.5"
+                max="10.0"
+                step="0.1"
+                value="6.8"
+                aria-describedby="pacing-help"
+              >
+            </div>
+          </div>
+          <span id="pacing-help" class="field-hint">
+            Multipliers scale the speaker's uncut inter-word cadence so commas (<code>,</code>) and periods (<code>.</code>) preserve natural prose rhythm.
+          </span>
+
+          <div class="form-group">
+            <label for="reference-script-input">Optional Reference Script (Prose &amp; Punctuation Guide)</label>
+            <textarea
+              id="reference-script-input"
+              name="reference_script"
+              rows="3"
+              placeholder="Paste optional script text here to assist punctuation and take alignment..."
+            ></textarea>
+          </div>
+        </fieldset>
+
+        <!-- Optional Cloud LLM API Enhancement -->
+        <details class="advanced-details">
+          <summary>Optional Cloud LLM Take Verification &amp; Restore Saved Session</summary>
+          <div class="details-body">
+            <div class="form-row-2col">
+              <div class="form-group">
+                <label for="llm-provider-select">Take Selector Engine</label>
+                <select id="llm-provider-select" name="llm_provider">
+                  <option value="local" selected>Local Acoustic + Talkback AI (Offline)</option>
+                  <option value="openai">Local + OpenAI GPT-4o-mini Verification</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="llm-api-key-input">Optional API Key</label>
+                <input
+                  type="password"
+                  id="llm-api-key-input"
+                  name="llm_api_key"
+                  autocomplete="off"
+                  autocorrect="off"
+                  autocapitalize="off"
+                  spellcheck="false"
+                  placeholder="sk-..."
+                >
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="import-session-input">Or Restore Previously Preserved Edit Session (<code>.ars.json</code>)</label>
+              <input type="file" id="import-session-input" accept=".json">
+            </div>
+          </div>
+        </details>
+
+        <button type="submit" id="btn-process-submit" class="btn btn-primary btn-block">
+          Analyze &amp; Assemble Rough Cut
+        </button>
+      </form>
+
+      <!-- Progress Status Bar Section (Compliant with modern-web-guidance `progress`) -->
+      <div id="progress-container" class="progress-box">
+        <div class="progress-header">
+          <label for="process-progress" id="progress-stage-label">Ready to process recording</label>
+          <span id="progress-percent-text" class="progress-pct">0%</span>
+        </div>
+        <progress id="process-progress" max="100" value="0" aria-labelledby="progress-stage-label"></progress>
+        <!-- Polite status region announces completion without stealing keyboard focus -->
+        <div id="progress-live-status" class="status-subtext" role="status" aria-live="polite">
+          Select an audio file or load a built-in demo to begin.
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT COLUMN: Waveform Timeline, Preserved Edit Points, Take Inspector & Multi-Format Exporter -->
+    <section class="panel editor-panel" aria-labelledby="editor-heading">
+      <div class="panel-header-bar">
+        <h2 id="editor-heading" class="panel-title">2. Non-Destructive Timeline, Take Inspector &amp; Export</h2>
+        <div class="session-badge-group">
+          <span id="active-session-badge" class="badge">No Active Session</span>
+        </div>
+      </div>
+
+      <!-- Summary Metrics Strip -->
+      <div class="metrics-strip" id="metrics-strip">
+        <div class="metric-card">
+          <span class="metric-label">Input Duration / Format</span>
+          <strong id="metric-input-info">—</strong>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Rough Cut Duration</span>
+          <strong id="metric-output-dur">—</strong>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Uncut Cadence / WPM</span>
+          <strong id="metric-cadence">—</strong>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Comma / Period Pause</span>
+          <strong id="metric-pauses">—</strong>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Talkback &amp; Breaths Excised</span>
+          <strong id="metric-excised">—</strong>
+        </div>
+      </div>
+
+      <!-- Waveform & Edit Point Canvas Visualization -->
+      <div class="waveform-section">
+        <div class="waveform-legend">
+          <span><i class="swatch swatch-kept"></i> Kept Take (VO Left/Main)</span>
+          <span><i class="swatch swatch-rejected"></i> Rejected/Duplicate Take</span>
+          <span><i class="swatch swatch-talkback"></i> Studio Talkback (Tone-Bounded Right Ch — Excluded)</span>
+          <span><i class="swatch swatch-breath"></i> Excised Breath/Noise</span>
+        </div>
+        <canvas id="waveform-canvas" width="960" height="175" aria-label="Voiceover and Talkback Waveform Timeline"></canvas>
+        <div class="audio-preview-bar">
+          <audio id="vo-audio-player" controls preload="metadata"></audio>
+          <span id="preview-time-hint" class="field-hint">Click "Audition Take" on any take below to jump directly to its isolated voiceover audio.</span>
+        </div>
+      </div>
+
+      <!-- Export & Format Conversion Panel (Instant Re-Export from Preserved Edit Points) -->
+      <form id="export-form" class="export-panel" novalidate>
+        <fieldset class="form-fieldset">
+          <legend>3. Instant Multi-Format Export &amp; Adobe Audition Multitrack (No Re-Processing Needed)</legend>
+
+          <div class="form-row-4col">
+            <div class="form-group">
+              <label for="export-format-select">Audio Format</label>
+              <select id="export-format-select" name="audio_format">
+                <option value="match_input" selected>Match Input Format (No Conversion)</option>
+                <option value="wav">WAV (Uncompressed Master)</option>
+                <option value="flac">FLAC (Lossless Compressed)</option>
+                <option value="mp3">MP3 (320 kbps / V0 Review)</option>
+                <option value="ogg">OGG Vorbis</option>
+                <option value="m4a">M4A / AAC</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="export-sr-select">Sample Rate</label>
+              <select id="export-sr-select" name="sample_rate">
+                <option value="0" selected>Match Input Sample Rate</option>
+                <option value="44100">44,100 Hz (CD / Broadcast)</option>
+                <option value="48000">48,000 Hz (Video / Post)</option>
+                <option value="96000">96,000 Hz (Hi-Res Master)</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="export-bitdepth-select">Bit Depth / Subtype</label>
+              <select id="export-bitdepth-select" name="bit_depth">
+                <option value="match_input" selected>Match Input Bit Depth</option>
+                <option value="PCM_16">16-Bit PCM</option>
+                <option value="PCM_24">24-Bit PCM (Studio Standard)</option>
+                <option value="FLOAT">32-Bit IEEE Float</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="export-channelmap-select">Output Channel Map</label>
+              <select id="export-channelmap-select" name="channel_map">
+                <option value="match_input" selected>Match Input (Clean VO Only)</option>
+                <option value="mono">Mono (1.0 Single Channel VO)</option>
+                <option value="stereo_dual_mono">Stereo Dual-Mono (VO on L &amp; R)</option>
+                <option value="stereo_left_only">Stereo VO Left Only (Mute R)</option>
+                <option value="stereo_right_only">Stereo VO Right Only (Mute L)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="export-buttons-row">
+            <button type="button" id="btn-export-audio" class="btn btn-primary" disabled>
+              Export Master Audio File
+            </button>
+            <button type="button" id="btn-export-audition" class="btn btn-accent" disabled>
+              Export Adobe Audition Multitrack (.sesx Bundle)
+            </button>
+            <button type="button" id="btn-export-sesx-only" class="btn btn-secondary" disabled>
+              Download .sesx XML Only
+            </button>
+            <button type="button" id="btn-export-session-json" class="btn btn-secondary" disabled>
+              Save Preserved Edit Session (.ars.json)
+            </button>
+          </div>
+        </fieldset>
+      </form>
+
+      <!-- Interactive Tabs: Take Groups & Director Notes | Preserved Edit Timeline Clips | Breaths & Talkback Log -->
+      <div class="inspector-grid">
+        <div class="inspector-col">
+          <h3 class="subpanel-title">Detected Take Groups &amp; AI Selection</h3>
+          <p class="field-hint">Toggle any candidate take below to swap it into the assembled rough cut immediately without re-running STT.</p>
+          <div id="take-groups-container" class="scroll-list">
+            <div class="empty-state">No edit session loaded yet.</div>
+          </div>
+        </div>
+
+        <div class="inspector-col">
+          <h3 class="subpanel-title">Assembled Timeline Edit Points &amp; Grammatical Pauses</h3>
+          <p class="field-hint">Each edit point preserves source in/out times and applies English comma/period cadence rules.</p>
+          <div id="timeline-clips-container" class="scroll-list">
+            <div class="empty-state">Assembled edit points will appear here after processing.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
