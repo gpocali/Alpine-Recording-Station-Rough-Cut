@@ -192,3 +192,18 @@ class EditSession(BaseModel):
     output_duration_sec: float = 0.0
     waveform_peaks_vo: List[float] = Field(default_factory=list)
     waveform_peaks_tb: List[float] = Field(default_factory=list)
+    waveform_peaks_output: List[float] = Field(default_factory=list)
+
+
+class OutputPreviewInfo(BaseModel):
+    session_id: str
+    filename: str
+    audio_format: str
+    sample_rate: int
+    channels: int
+    bit_depth: str
+    duration_sec: float
+    file_size_bytes: int
+    preview_audio_url: str
+    waveform_peaks_output: List[float] = Field(default_factory=list)
+

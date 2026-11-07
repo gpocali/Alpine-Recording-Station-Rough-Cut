@@ -22,6 +22,7 @@ from backend.models import (
     ChannelMapOption,
     EditSession,
     ExportSettings,
+    OutputPreviewInfo,
     RecordingMode,
     TalkbackInterval,
     TimelineEditClip,
@@ -687,3 +688,83 @@ def render_edited_audio(
                     pass
 
     return out_path
+
+
+def compute_assembled_output_peaks(
+    clean_vo_path: str,
+    timeline_clips: List[TimelineEditClip],
+    breaths_removed: List[BreathOrNoiseEvent],
+    num_bins: int = 500,
+) -> List[float]:
+    """
+    Compute normalized peak envelope [0.0..1.0] for the assembled output timeline
+    from the isolated clean voiceover audio and preserved edit clips.
+    """
+    if not os.path.exists(clean_vo_path) or not timeline_clips:
+        return [0.0] * num_bins
+    try:
+        clean_vo, sr, _, _, _ = load_audio_file(clean_vo_path)
+    except Exception:
+        return [0.0] * num_bins
+    vo_1d = clean_vo[:, 0]
+    removed_breaths = [b for b in breaths_removed if b.removed]
+    chunks: List[np.ndarray] = []
+
+    for clip in timeline_clips:
+        s_idx = max(0, int(round(clip.source_start * sr)))
+        e_idx = min(len(vo_1d), int(round(clip.source_end * sr)))
+        if e_idx <= s_idx:
+            continue
+        seg = vo_1d[s_idx:e_idx].copy()
+        for br in removed_breaths:
+            if br.end_time > clip.source_start and br.start_time < clip.source_end:
+                bs = max(0, int((br.start_time - clip.source_start) * sr))
+                be = min(len(seg), int((br.end_time - clip.source_start) * sr))
+                if be > bs:
+                    seg[bs:be] = 0.0
+        chunks.append(seg)
+        pause_samples = int(round((clip.pause_after_ms / 1000.0) * sr))
+        if pause_samples > 0:
+            chunks.append(np.zeros(pause_samples, dtype=np.float64))
+
+    if not chunks:
+        return [0.0] * num_bins
+    assembled = np.concatenate(chunks)
+    return compute_waveform_peaks(assembled, num_bins=num_bins)
+
+
+def render_output_preview(
+    session: EditSession,
+    export_settings: ExportSettings,
+    output_dir: str,
+) -> Tuple[str, OutputPreviewInfo]:
+    """
+    Render the final output file according to `export_settings` and return its file path
+    along with `OutputPreviewInfo` metadata and waveform peaks for pre-export inspection.
+    """
+    rendered_path = render_edited_audio(session, export_settings, output_dir)
+    data_2d, sr, channels, subtype, fmt = load_audio_file(rendered_path)
+    duration_sec = round(len(data_2d) / sr, 4) if sr > 0 else 0.0
+    file_size = os.path.getsize(rendered_path) if os.path.exists(rendered_path) else 0
+    mono_envelope = np.max(np.abs(data_2d), axis=1) if len(data_2d) > 0 else np.zeros(0)
+    peaks_out = compute_waveform_peaks(mono_envelope, num_bins=500)
+
+    fname = Path(rendered_path).name
+    ext = Path(rendered_path).suffix.lower().lstrip(".") or fmt
+    mtime_ms = int(os.path.getmtime(rendered_path) * 1000) if os.path.exists(rendered_path) else 0
+    preview_url = f"/api/sessions/{session.session_id}/preview-audio?file={fname}&t={mtime_ms}"
+
+    info = OutputPreviewInfo(
+        session_id=session.session_id,
+        filename=fname,
+        audio_format=ext.upper(),
+        sample_rate=sr,
+        channels=channels,
+        bit_depth=subtype,
+        duration_sec=duration_sec,
+        file_size_bytes=file_size,
+        preview_audio_url=preview_url,
+        waveform_peaks_output=peaks_out,
+    )
+    return rendered_path, info
+

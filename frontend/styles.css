@@ -643,6 +643,12 @@ progress::-moz-progress-bar {
 .swatch-breath {
   background-color: #9b59b6;
 }
+.swatch-pause {
+  background-color: #38bdf8;
+}
+.swatch-playhead {
+  background-color: #facc15;
+}
 
 #waveform-canvas {
   width: 100%;
@@ -653,6 +659,16 @@ progress::-moz-progress-bar {
   border: 1px solid var(--border-color);
 }
 
+#output-waveform-canvas {
+  width: 100%;
+  height: 125px;
+  display: block;
+  border-radius: 0.4rem;
+  background-color: #0b1017;
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+}
+
 .audio-preview-bar {
   display: flex;
   flex-wrap: wrap;
@@ -661,9 +677,51 @@ progress::-moz-progress-bar {
   margin-block-start: 0.65rem;
 }
 
-#vo-audio-player {
+#vo-audio-player,
+#output-preview-player {
   flex: 1 1 280px;
   height: 38px;
+}
+
+/* Final Output File Preview Box */
+.output-preview-box {
+  margin-block-start: 0.9rem;
+  padding: 0.85rem;
+  border-radius: 0.55rem;
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--border-color);
+}
+
+.output-preview-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.65rem;
+  margin-block-end: 0.55rem;
+}
+
+.output-preview-heading {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.output-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.output-preview-caption {
+  flex: 2 1 320px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.clip-card.is-playing-output {
+  border-color: var(--accent-emerald);
+  box-shadow: inset 3px 0 0 var(--accent-emerald);
 }
 
 /* Export Buttons */

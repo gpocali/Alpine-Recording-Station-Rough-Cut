@@ -334,6 +334,38 @@
             </div>
           </div>
 
+          <div class="output-preview-box" id="output-preview-box" aria-labelledby="output-preview-title">
+            <div class="output-preview-header">
+              <div>
+                <h3 id="output-preview-title" class="output-preview-heading">Final Output File Preview (Before Export)</h3>
+                <span id="output-preview-specs" class="field-hint">Process or load a session to preview the assembled master audio file before exporting.</span>
+              </div>
+              <div class="output-preview-actions">
+                <button type="button" id="btn-play-output-preview" class="btn btn-secondary btn-sm" disabled>
+                  Play Final Output
+                </button>
+                <button type="button" id="btn-refresh-output-preview" class="btn btn-secondary btn-sm" disabled>
+                  Re-Render Preview
+                </button>
+              </div>
+            </div>
+
+            <div class="waveform-legend output-waveform-legend">
+              <span><i class="swatch swatch-kept"></i> Assembled Clip (Kept VO)</span>
+              <span><i class="swatch swatch-pause"></i> Grammatical Pause (Comma / Period Room-Tone)</span>
+              <span><i class="swatch swatch-playhead"></i> Output Playhead (Click Waveform to Seek)</span>
+            </div>
+
+            <canvas id="output-waveform-canvas" width="960" height="125" aria-label="Assembled Final Output Waveform Timeline"></canvas>
+
+            <div class="audio-preview-bar">
+              <audio id="output-preview-player" controls preload="metadata"></audio>
+              <span id="output-preview-caption" class="output-preview-caption" role="status" aria-live="polite">
+                Ready to audition the assembled rough cut with grammatical pauses and crossfades applied.
+              </span>
+            </div>
+          </div>
+
           <div class="export-buttons-row">
             <button type="button" id="btn-export-audio" class="btn btn-primary" disabled>
               Export Master Audio File

@@ -7,6 +7,8 @@
 
   let currentSession = null;
   let audioStopAtTime = null;
+  let outputPreviewStopAtTime = null;
+  let latestPreviewInfo = null;
 
   // DOM Elements
   const healthPill = document.getElementById("system-health-pill");
@@ -50,6 +52,13 @@
   const exportSrSelect = document.getElementById("export-sr-select");
   const exportBitDepthSelect = document.getElementById("export-bitdepth-select");
   const exportChannelMapSelect = document.getElementById("export-channelmap-select");
+
+  const outputPreviewSpecs = document.getElementById("output-preview-specs");
+  const btnPlayOutputPreview = document.getElementById("btn-play-output-preview");
+  const btnRefreshOutputPreview = document.getElementById("btn-refresh-output-preview");
+  const outputWaveformCanvas = document.getElementById("output-waveform-canvas");
+  const outputPreviewPlayer = document.getElementById("output-preview-player");
+  const outputPreviewCaption = document.getElementById("output-preview-caption");
 
   const btnExportAudio = document.getElementById("btn-export-audio");
   const btnExportAudition = document.getElementById("btn-export-audition");
@@ -98,6 +107,11 @@
     if (audioStopAtTime !== null && voAudioPlayer.currentTime >= audioStopAtTime) {
       voAudioPlayer.pause();
       audioStopAtTime = null;
+    }
+  });
+  voAudioPlayer.addEventListener("play", () => {
+    if (outputPreviewPlayer && !outputPreviewPlayer.paused) {
+      outputPreviewPlayer.pause();
     }
   });
 
@@ -320,11 +334,13 @@
     const removedBreathsCount = session.breaths_removed.filter((b) => b.removed).length;
     metricExcised.textContent = `${session.talkback_intervals.length} Talkbacks • ${removedBreathsCount} Breaths`;
 
-    // Enable instant export buttons
+    // Enable instant export & preview buttons
     btnExportAudio.disabled = false;
     btnExportAudition.disabled = false;
     btnExportSesxOnly.disabled = false;
     btnExportSessionJson.disabled = false;
+    if (btnPlayOutputPreview) btnPlayOutputPreview.disabled = false;
+    if (btnRefreshOutputPreview) btnRefreshOutputPreview.disabled = false;
 
     // Load clean isolated VO audio into player
     const audioUrl = `/api/sessions/${encodeURIComponent(session.session_id)}/source-audio`;
@@ -334,8 +350,10 @@
     }
 
     drawWaveformTimeline(session);
+    drawOutputWaveformTimeline(session, outputPreviewPlayer ? outputPreviewPlayer.currentTime : 0);
     renderTakeGroupsList(session);
     renderTimelineClipsList(session);
+    refreshOutputPreview(session);
   }
 
   function drawWaveformTimeline(session) {
@@ -560,11 +578,251 @@
 
       const subMeta = document.createElement("div");
       subMeta.className = "take-meta";
-      subMeta.textContent = `Source In/Out: ${clip.source_start.toFixed(3)}s – ${clip.source_end.toFixed(3)}s | Cosine Crossfades: ${clip.fade_in_ms}ms / ${clip.fade_out_ms}ms`;
+
+      const metaSpan = document.createElement("span");
+      metaSpan.textContent = `Source In/Out: ${clip.source_start.toFixed(3)}s – ${clip.source_end.toFixed(3)}s | Cosine Crossfades: ${clip.fade_in_ms}ms / ${clip.fade_out_ms}ms`;
+
+      const btnPreviewClip = document.createElement("button");
+      btnPreviewClip.type = "button";
+      btnPreviewClip.className = "btn btn-secondary btn-sm";
+      btnPreviewClip.textContent = "Preview in Output";
+      btnPreviewClip.addEventListener("click", () => {
+        if (!outputPreviewPlayer) return;
+        outputPreviewStopAtTime = clip.timeline_end + clip.pause_after_ms / 1000.0;
+        outputPreviewPlayer.currentTime = clip.timeline_start;
+        outputPreviewPlayer.play();
+      });
+
+      subMeta.appendChild(metaSpan);
+      subMeta.appendChild(btnPreviewClip);
       card.appendChild(subMeta);
+      card.setAttribute("data-clip-index", String(i));
 
       timelineClipsContainer.appendChild(card);
     }
+  }
+
+  function formatBytes(bytes) {
+    if (!bytes || bytes <= 0) return "0 B";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  }
+
+  function drawOutputWaveformTimeline(session, playheadSec = 0) {
+    if (!outputWaveformCanvas || !session) return;
+    const ctx = outputWaveformCanvas.getContext("2d");
+    const w = outputWaveformCanvas.width;
+    const h = outputWaveformCanvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    ctx.fillStyle = "#0b1017";
+    ctx.fillRect(0, 0, w, h);
+
+    const outDur = Math.max(
+      0.1,
+      (latestPreviewInfo && latestPreviewInfo.session_id === session.session_id
+        ? latestPreviewInfo.duration_sec
+        : session.output_duration_sec) || 0.1
+    );
+    const centerY = h * 0.5;
+    const halfH = h * 0.42;
+
+    // 1. Draw assembled clip regions (Emerald) and grammatical pauses (Cyan)
+    for (const clip of session.timeline_clips || []) {
+      const x1 = (clip.timeline_start / outDur) * w;
+      const x2 = Math.max(x1 + 2, (clip.timeline_end / outDur) * w);
+      ctx.fillStyle = "rgba(46, 204, 113, 0.20)";
+      ctx.fillRect(x1, 4, x2 - x1, h - 8);
+      ctx.strokeStyle = "#2ecc71";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x1, 4, x2 - x1, h - 8);
+
+      const pauseSec = (clip.pause_after_ms || 0) / 1000.0;
+      if (pauseSec > 0.005) {
+        const px1 = x2;
+        const px2 = Math.max(px1 + 1.5, ((clip.timeline_end + pauseSec) / outDur) * w);
+        ctx.fillStyle = "rgba(56, 189, 248, 0.18)";
+        ctx.fillRect(px1, 8, px2 - px1, h - 16);
+      }
+    }
+
+    // 2. Draw rendered output waveform peaks
+    const peaksOut =
+      (latestPreviewInfo &&
+      latestPreviewInfo.session_id === session.session_id &&
+      latestPreviewInfo.waveform_peaks_output &&
+      latestPreviewInfo.waveform_peaks_output.length > 0
+        ? latestPreviewInfo.waveform_peaks_output
+        : session.waveform_peaks_output) || [];
+
+    if (peaksOut.length > 0) {
+      ctx.strokeStyle = "#38d996";
+      ctx.lineWidth = 1.35;
+      ctx.beginPath();
+      for (let i = 0; i < peaksOut.length; i++) {
+        const x = (i / peaksOut.length) * w;
+        const amp = Math.min(1.0, peaksOut[i] * 1.8) * halfH;
+        ctx.moveTo(x, centerY - amp);
+        ctx.lineTo(x, centerY + amp);
+      }
+      ctx.stroke();
+    }
+
+    // 3. Draw active playhead cursor
+    if (playheadSec > 0 && playheadSec <= outDur) {
+      const px = Math.min(w - 1, Math.max(1, (playheadSec / outDur) * w));
+      ctx.strokeStyle = "#facc15";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(px, 0);
+      ctx.lineTo(px, h);
+      ctx.stroke();
+    }
+  }
+
+  async function refreshOutputPreview(sessionToPreview = currentSession) {
+    if (!sessionToPreview || !outputPreviewPlayer) return;
+    const exp = gatherExportSettings();
+    if (outputPreviewSpecs) {
+      outputPreviewSpecs.textContent = "Rendering final output preview...";
+    }
+    try {
+      const res = await fetch(
+        `/api/sessions/${encodeURIComponent(sessionToPreview.session_id)}/preview`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(exp),
+        }
+      );
+      if (!res.ok) {
+        throw new Error("Could not render output preview.");
+      }
+      const info = await res.json();
+      latestPreviewInfo = info;
+      sessionToPreview.waveform_peaks_output = info.waveform_peaks_output || [];
+
+      const chLabel = info.channels === 1 ? "Mono (1ch)" : `Stereo (${info.channels}ch)`;
+      if (outputPreviewSpecs) {
+        outputPreviewSpecs.textContent = `Ready to export: ${info.filename} • ${info.duration_sec.toFixed(2)}s • ${(info.sample_rate / 1000).toFixed(1)} kHz • ${info.bit_depth} • ${chLabel} • ${formatBytes(info.file_size_bytes)}`;
+      }
+
+      if (outputPreviewPlayer.getAttribute("data-src") !== info.preview_audio_url) {
+        const wasPlaying = !outputPreviewPlayer.paused;
+        outputPreviewPlayer.src = info.preview_audio_url;
+        outputPreviewPlayer.setAttribute("data-src", info.preview_audio_url);
+        if (wasPlaying) {
+          outputPreviewPlayer.play().catch(() => {});
+        }
+      }
+      drawOutputWaveformTimeline(sessionToPreview, outputPreviewPlayer.currentTime || 0);
+    } catch (err) {
+      if (outputPreviewSpecs) {
+        outputPreviewSpecs.textContent = `Preview error: ${err.message || err}`;
+      }
+    }
+  }
+
+  function updateOutputPlayheadStatus() {
+    if (!currentSession || !outputPreviewPlayer) return;
+    const t = outputPreviewPlayer.currentTime || 0;
+    if (outputPreviewStopAtTime !== null && t >= outputPreviewStopAtTime) {
+      outputPreviewPlayer.pause();
+      outputPreviewStopAtTime = null;
+    }
+
+    drawOutputWaveformTimeline(currentSession, t);
+
+    const cards = timelineClipsContainer.querySelectorAll(".clip-card");
+    cards.forEach((c) => c.classList.remove("is-playing-output"));
+
+    const clips = currentSession.timeline_clips || [];
+    for (let i = 0; i < clips.length; i++) {
+      const c = clips[i];
+      const pauseEnd = c.timeline_end + (c.pause_after_ms || 0) / 1000.0;
+      if (t >= c.timeline_start && t <= c.timeline_end) {
+        if (outputPreviewCaption) {
+          outputPreviewCaption.textContent = `Playing Clip #${i + 1} (${c.timeline_start.toFixed(2)}s – ${c.timeline_end.toFixed(2)}s): "${c.text}"`;
+        }
+        if (cards[i]) cards[i].classList.add("is-playing-output");
+        return;
+      } else if (t > c.timeline_end && t <= pauseEnd) {
+        if (outputPreviewCaption) {
+          outputPreviewCaption.textContent = `Grammatical Pause after Clip #${i + 1}: +${c.pause_after_ms.toFixed(0)}ms (${c.pause_type} cadence)`;
+        }
+        if (cards[i]) cards[i].classList.add("is-playing-output");
+        return;
+      }
+    }
+  }
+
+  if (outputPreviewPlayer) {
+    outputPreviewPlayer.addEventListener("timeupdate", updateOutputPlayheadStatus);
+    outputPreviewPlayer.addEventListener("play", () => {
+      if (voAudioPlayer && !voAudioPlayer.paused) {
+        voAudioPlayer.pause();
+      }
+      if (btnPlayOutputPreview) {
+        btnPlayOutputPreview.textContent = "Pause Output Preview";
+      }
+      updateOutputPlayheadStatus();
+    });
+    outputPreviewPlayer.addEventListener("pause", () => {
+      if (btnPlayOutputPreview) {
+        btnPlayOutputPreview.textContent = "Play Final Output";
+      }
+      drawOutputWaveformTimeline(currentSession, outputPreviewPlayer.currentTime || 0);
+    });
+    outputPreviewPlayer.addEventListener("ended", () => {
+      outputPreviewStopAtTime = null;
+      if (btnPlayOutputPreview) {
+        btnPlayOutputPreview.textContent = "Play Final Output";
+      }
+      if (outputPreviewCaption) {
+        outputPreviewCaption.textContent = "Finished playing final output file preview.";
+      }
+      const cards = timelineClipsContainer.querySelectorAll(".clip-card");
+      cards.forEach((c) => c.classList.remove("is-playing-output"));
+      drawOutputWaveformTimeline(currentSession, 0);
+    });
+  }
+
+  if (btnPlayOutputPreview && outputPreviewPlayer) {
+    btnPlayOutputPreview.addEventListener("click", () => {
+      if (!currentSession) return;
+      outputPreviewStopAtTime = null;
+      if (outputPreviewPlayer.paused) {
+        outputPreviewPlayer.play();
+      } else {
+        outputPreviewPlayer.pause();
+      }
+    });
+  }
+
+  if (btnRefreshOutputPreview) {
+    btnRefreshOutputPreview.addEventListener("click", () => {
+      if (!currentSession) return;
+      refreshOutputPreview(currentSession);
+    });
+  }
+
+  if (outputWaveformCanvas && outputPreviewPlayer) {
+    outputWaveformCanvas.addEventListener("click", (e) => {
+      if (!currentSession) return;
+      const rect = outputWaveformCanvas.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const outDur =
+        (latestPreviewInfo && latestPreviewInfo.session_id === currentSession.session_id
+          ? latestPreviewInfo.duration_sec
+          : currentSession.output_duration_sec) || 0;
+      if (outDur > 0) {
+        outputPreviewStopAtTime = null;
+        outputPreviewPlayer.currentTime = ratio * outDur;
+        outputPreviewPlayer.play();
+      }
+    });
   }
 
   async function selectAlternateTake(takeGroupId, takeId) {
@@ -607,6 +865,17 @@
   commaMultRange.addEventListener("change", syncPacingToActiveSession);
   periodMultRange.addEventListener("change", syncPacingToActiveSession);
   roomToneCheck.addEventListener("change", syncPacingToActiveSession);
+
+  // Automatically re-render the Final Output Preview when export format/rate/depth/channel settings change
+  for (const el of [exportFormatSelect, exportSrSelect, exportBitDepthSelect, exportChannelMapSelect, outputNameInput]) {
+    if (el) {
+      el.addEventListener("change", () => {
+        if (currentSession) {
+          refreshOutputPreview(currentSession);
+        }
+      });
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // Multi-Format Export Triggers (No Re-Processing Required!)

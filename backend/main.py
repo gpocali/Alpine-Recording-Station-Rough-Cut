@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.audio_engine import (
     _find_ffmpeg,
+    compute_assembled_output_peaks,
     compute_waveform_peaks,
     detect_breaths_and_noises,
     detect_talkback_tones,
@@ -28,12 +29,14 @@ from backend.audio_engine import (
     load_audio_file,
     pair_talkback_tones,
     render_edited_audio,
+    render_output_preview,
 )
 from backend.audition_exporter import export_audition_sesx, export_edl_and_markers_csv
 from backend.demo_generator import generate_normal_mode_sample, generate_studio_mode_sample
 from backend.models import (
     EditSession,
     ExportSettings,
+    OutputPreviewInfo,
     ProcessingSettings,
     RecordingMode,
     SessionPatchRequest,
@@ -100,6 +103,12 @@ def recalculate_session_timeline(session: EditSession) -> EditSession:
     session.cadence_profile = cadence
     session.timeline_clips = clips
     session.output_duration_sec = total_out_sec
+    session.waveform_peaks_output = compute_assembled_output_peaks(
+        clean_vo_path=session.clean_vo_path,
+        timeline_clips=clips,
+        breaths_removed=session.breaths_removed,
+        num_bins=500,
+    )
     save_session(session)
     return session
 
@@ -199,6 +208,12 @@ def run_rough_cut_pipeline(
         cadence=cadence,
         crossfade_ms=settings.crossfade_ms,
     )
+    waveform_peaks_output = compute_assembled_output_peaks(
+        clean_vo_path=clean_vo_path,
+        timeline_clips=timeline_clips,
+        breaths_removed=breaths,
+        num_bins=500,
+    )
 
     report(96, "Preserving non-destructive edit session and timeline markers...")
     session = EditSession(
@@ -222,6 +237,7 @@ def run_rough_cut_pipeline(
         output_duration_sec=out_dur,
         waveform_peaks_vo=waveform_peaks_vo,
         waveform_peaks_tb=waveform_peaks_tb,
+        waveform_peaks_output=waveform_peaks_output,
     )
     save_session(session)
     report(100, "Rough cut assembly complete! Ready for preview and multi-format export.")
@@ -447,6 +463,85 @@ def get_clean_source_audio(session_id: str):
     if not os.path.exists(session.clean_vo_path):
         raise HTTPException(status_code=404, detail="Clean voiceover audio file missing")
     return FileResponse(session.clean_vo_path, media_type="audio/wav")
+
+
+@app.post("/api/sessions/{session_id}/preview", response_model=OutputPreviewInfo)
+def generate_final_output_preview_endpoint(
+    session_id: str,
+    export_settings: Optional[ExportSettings] = None,
+):
+    """
+    Render the assembled final output file according to `export_settings` (before export)
+    and return preview metadata, waveform peaks, and a streamable preview URL.
+    """
+    try:
+        session = load_session(session_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Edit session not found")
+
+    exp = export_settings or ExportSettings(
+        output_name=session.settings.output_name,
+        use_room_tone_padding=session.settings.use_room_tone_padding,
+        comma_pause_multiplier=session.settings.comma_pause_multiplier,
+        period_pause_multiplier=session.settings.period_pause_multiplier,
+        crossfade_ms=session.settings.crossfade_ms,
+    )
+
+    session.settings.comma_pause_multiplier = exp.comma_pause_multiplier
+    session.settings.period_pause_multiplier = exp.period_pause_multiplier
+    session.settings.use_room_tone_padding = exp.use_room_tone_padding
+    session.settings.crossfade_ms = exp.crossfade_ms
+    recalculate_session_timeline(session)
+
+    preview_dir = OUTPUTS_DIR / session_id / "preview"
+    _, preview_info = render_output_preview(session, exp, str(preview_dir))
+    session.waveform_peaks_output = preview_info.waveform_peaks_output
+    save_session(session)
+    return preview_info
+
+
+@app.get("/api/sessions/{session_id}/preview-audio")
+def stream_final_output_preview_audio(session_id: str, file: Optional[str] = None):
+    """
+    Stream the rendered final output audio file for in-browser pre-export playback.
+    If not yet rendered on disk, renders a default preview automatically.
+    """
+    try:
+        session = load_session(session_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Edit session not found")
+
+    preview_dir = OUTPUTS_DIR / session_id / "preview"
+    target_path: Optional[Path] = None
+
+    if file:
+        # Sanitize filename to prevent directory traversal
+        safe_file = Path(file).name
+        candidate = preview_dir / safe_file
+        if candidate.exists():
+            target_path = candidate
+
+    if target_path is None or not target_path.exists():
+        default_exp = ExportSettings(
+            output_name=session.settings.output_name,
+            use_room_tone_padding=session.settings.use_room_tone_padding,
+            comma_pause_multiplier=session.settings.comma_pause_multiplier,
+            period_pause_multiplier=session.settings.period_pause_multiplier,
+            crossfade_ms=session.settings.crossfade_ms,
+        )
+        rendered_str, _ = render_output_preview(session, default_exp, str(preview_dir))
+        target_path = Path(rendered_str)
+
+    ext = target_path.suffix.lower().lstrip(".")
+    mime_map = {
+        "wav": "audio/wav",
+        "flac": "audio/flac",
+        "mp3": "audio/mpeg",
+        "ogg": "audio/ogg",
+        "m4a": "audio/mp4",
+    }
+    media_type = mime_map.get(ext, "audio/wav")
+    return FileResponse(str(target_path), media_type=media_type)
 
 
 @app.post("/api/sessions/{session_id}/export/audio")

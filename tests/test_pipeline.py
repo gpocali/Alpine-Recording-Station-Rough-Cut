@@ -20,11 +20,13 @@ from backend.demo_generator import generate_normal_mode_sample, generate_studio_
 from backend.main import (
     export_audition_bundle_endpoint,
     export_master_audio_endpoint,
+    generate_final_output_preview_endpoint,
     get_health,
     get_session_details,
     patch_session_edits,
     run_rough_cut_pipeline,
     serve_index,
+    stream_final_output_preview_audio,
 )
 from backend.models import (
     AudioFormatOption,
@@ -238,6 +240,32 @@ def test_normal_mode_and_fastapi_endpoints(tmp_path: Path):
         ExportSettings(output_name="Normal_Master_Audio"),
     )
     assert os.path.exists(audio_resp.path)
+
+    # Test pre-export Final Output Preview generation and streaming
+    assert len(patched.waveform_peaks_output) == 500
+    preview_info = generate_final_output_preview_endpoint(
+        session.session_id,
+        ExportSettings(
+            output_name="Normal_Preview_Check",
+            audio_format=AudioFormatOption.WAV,
+            sample_rate=48000,
+            bit_depth=BitDepthOption.PCM_16,
+            channel_map=ChannelMapOption.MONO,
+        ),
+    )
+    assert preview_info.session_id == session.session_id
+    assert preview_info.filename == "Normal_Preview_Check.wav"
+    assert preview_info.sample_rate == 48000
+    assert preview_info.channels == 1
+    assert preview_info.bit_depth == "PCM_16"
+    assert preview_info.file_size_bytes > 1000
+    assert len(preview_info.waveform_peaks_output) == 500
+
+    preview_stream_resp = stream_final_output_preview_audio(
+        session.session_id,
+        file=preview_info.filename,
+    )
+    assert os.path.exists(preview_stream_resp.path)
 
     idx_resp = serve_index()
     assert os.path.exists(idx_resp.path)
