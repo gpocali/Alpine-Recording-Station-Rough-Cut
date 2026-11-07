@@ -144,9 +144,9 @@ def verify_installation(venv_python: Path, preload_model: bool = False) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Setup Alpine Recording Station Rough Cut")
     parser.add_argument(
-        "--preload-model",
+        "--skip-model",
         action="store_true",
-        help="Download and cache the default faster-whisper base.en model during installation",
+        help="Skip downloading and caching the default faster-whisper base.en model during installation",
     )
     args = parser.parse_args()
 
@@ -156,7 +156,7 @@ def main() -> int:
     venv_py = ensure_virtualenv()
     install_python_packages(venv_py)
     ensure_ffmpeg()
-    verify_installation(venv_py, preload_model=args.preload_model)
+    verify_installation(venv_py, preload_model=not args.skip_model)
     print("==================================================================")
     print("  Setup Complete! Launch the app with:")
     if platform.system().lower() == "windows":

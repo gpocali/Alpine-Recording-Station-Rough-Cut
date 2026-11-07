@@ -38,12 +38,25 @@ def _normalize_word(w: str) -> str:
     return re.sub(r"[^a-z0-9']", "", w.lower()).strip()
 
 
+def _join_word_tokens(words: List[WordToken]) -> str:
+    parts: List[str] = []
+    for w in words:
+        tok = f"{w.word}{w.punctuation_after}"
+        if parts and tok.startswith("-"):
+            parts[-1] = f"{parts[-1]}{tok}"
+        else:
+            parts.append(tok)
+    return " ".join(parts).strip()
+
+
 def _normalize_phrase(words: List[WordToken]) -> List[str]:
     out = []
     for w in words:
-        nw = _normalize_word(w.word)
-        if nw and nw not in _DISFLUENCY_WORDS:
-            out.append(nw)
+        # Split hyphenated tokens (e.g. "1-2-3-4" -> ["1", "2", "3", "4"]) so retakes match accurately
+        for sub in re.split(r"[\-/]+", w.word):
+            nw = _normalize_word(sub)
+            if nw and nw not in _DISFLUENCY_WORDS:
+                out.append(nw)
     return out
 
 
@@ -259,9 +272,7 @@ def group_and_select_takes(
         group_id = f"tg_{g_idx}"
         # Determine canonical text (longest clean take in the group)
         longest_u = max(u_list, key=lambda u: len(_normalize_phrase(u)))
-        canonical_text = " ".join(
-            f"{w.word}{w.punctuation_after}" for w in longest_u
-        ).strip()
+        canonical_text = _join_word_tokens(longest_u)
         max_norm_words = max(1, len(_normalize_phrase(longest_u)))
 
         # Collect talkback notes associated with this group (occurring inside the group or right after the last take before the next group)
@@ -291,7 +302,7 @@ def group_and_select_takes(
             trimmed_start = max(0.0, t_start - 0.015)
             trimmed_end = min(len(vo_signal) / sample_rate if sample_rate > 0 else t_end, t_end + 0.025)
 
-            take_text = " ".join(f"{w.word}{w.punctuation_after}" for w in u_words).strip()
+            take_text = _join_word_tokens(u_words)
             term_punct = u_words[-1].punctuation_after or "."
 
             # 1. Completeness score (0..35)

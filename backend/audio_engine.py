@@ -115,8 +115,8 @@ def rms_db(samples: np.ndarray) -> float:
 def detect_talkback_tones(
     right_channel: np.ndarray,
     sample_rate: int,
-    min_tone_duration_sec: float = 0.07,
-    max_tone_duration_sec: float = 2.5,
+    min_tone_duration_sec: float = 0.12,
+    max_tone_duration_sec: float = 3.0,
 ) -> List[ToneMarker]:
     """
     Detect pure/narrowband audio tones on the Studio Mode right (talkback) channel.
@@ -125,7 +125,7 @@ def detect_talkback_tones(
     if len(right_channel) == 0:
         return []
 
-    win_len = max(128, int(0.025 * sample_rate))  # 25 ms window
+    win_len = max(256, int(0.040 * sample_rate))  # 40 ms window (~25 Hz bin resolution)
     hop_len = max(64, int(0.010 * sample_rate))   # 10 ms hop
     num_frames = max(0, (len(right_channel) - win_len) // hop_len + 1)
     if num_frames == 0:
@@ -134,8 +134,8 @@ def detect_talkback_tones(
     window = np.hanning(win_len)
     freqs = np.fft.rfftfreq(win_len, d=1.0 / sample_rate)
 
-    # Valid tone band: 250 Hz to 4000 Hz
-    valid_band = (freqs >= 250.0) & (freqs <= 4000.0)
+    # Valid studio tone band: 340 Hz to 4000 Hz (avoids human vocal fundamental 85-310 Hz)
+    valid_band = (freqs >= 340.0) & (freqs <= 4000.0)
     if not np.any(valid_band):
         return []
 
@@ -149,7 +149,7 @@ def detect_talkback_tones(
         f_rms = float(np.sqrt(np.mean(frame * frame) + 1e-18))
         f_db = 20.0 * math.log10(max(f_rms, 1e-9))
         frame_rms_db[idx] = f_db
-        if f_db < -46.0:
+        if f_db < -42.0:
             continue
 
         spec = np.abs(np.fft.rfft(frame * window)) ** 2
@@ -159,23 +159,17 @@ def detect_talkback_tones(
         dom_freq = float(freqs[peak_bin])
         frame_dom_freq[idx] = dom_freq
 
-        # Sum energy within +-90 Hz of dominant bin (plus 2nd/3rd harmonics if beep has mild harmonics)
-        narrow_mask = (np.abs(freqs - dom_freq) <= 90.0) | (np.abs(freqs - 2.0 * dom_freq) <= 90.0)
-        narrow_energy = float(np.sum(spec[narrow_mask]))
-        tonal_ratio = narrow_energy / total_energy
-
-        # Spectral flatness check: pure tones have very high tonal_ratio (> 0.68)
-        # whereas human speech formants distribute energy across multiple bands
-        fundamental_mask = np.abs(freqs - dom_freq) <= 85.0
+        # Pure studio tones concentrate >80% of total spectral energy within +-55 Hz of the fundamental
+        fundamental_mask = np.abs(freqs - dom_freq) <= 55.0
         fundamental_ratio = float(np.sum(spec[fundamental_mask])) / total_energy
 
-        if fundamental_ratio >= 0.58 and tonal_ratio >= 0.68:
+        if fundamental_ratio >= 0.78:
             frame_is_tone[idx] = True
 
     # Smooth 1-2 frame dropouts inside a continuous tone
     for idx in range(1, num_frames - 1):
         if not frame_is_tone[idx] and frame_is_tone[idx - 1] and frame_is_tone[idx + 1]:
-            if abs(frame_dom_freq[idx - 1] - frame_dom_freq[idx + 1]) < 80.0:
+            if abs(frame_dom_freq[idx - 1] - frame_dom_freq[idx + 1]) < 35.0:
                 frame_is_tone[idx] = True
                 frame_dom_freq[idx] = 0.5 * (frame_dom_freq[idx - 1] + frame_dom_freq[idx + 1])
 
@@ -189,14 +183,13 @@ def detect_talkback_tones(
             in_run = True
             run_start = idx
         elif is_t and in_run:
-            # Check if frequency jumped drastically (two adjacent different-frequency tones)
-            if abs(frame_dom_freq[idx] - frame_dom_freq[idx - 1]) > 150.0:
+            if abs(frame_dom_freq[idx] - frame_dom_freq[idx - 1]) > 80.0:
                 t_start = (run_start * hop_len) / sample_rate
                 t_end = (idx * hop_len + win_len * 0.5) / sample_rate
                 dur = t_end - t_start
                 if min_tone_duration_sec <= dur <= max_tone_duration_sec:
                     freq_slice = frame_dom_freq[run_start:idx]
-                    if float(np.std(freq_slice)) < 65.0:
+                    if float(np.std(freq_slice)) < 20.0:
                         tones.append(
                             ToneMarker(
                                 start_time=round(t_start, 4),
@@ -213,7 +206,7 @@ def detect_talkback_tones(
             dur = t_end - t_start
             if min_tone_duration_sec <= dur <= max_tone_duration_sec:
                 freq_slice = frame_dom_freq[run_start:idx]
-                if float(np.std(freq_slice)) < 65.0:
+                if float(np.std(freq_slice)) < 20.0:
                     tones.append(
                         ToneMarker(
                             start_time=round(t_start, 4),
@@ -222,6 +215,11 @@ def detect_talkback_tones(
                             rms_db=round(float(np.mean(frame_rms_db[run_start:idx])), 2),
                         )
                     )
+
+    # Filter out any spurious low-level vocal harmonic that is > 9 dB quieter than the loudest tone
+    if len(tones) >= 2:
+        max_tone_db = max(t.rms_db for t in tones)
+        tones = [t for t in tones if t.rms_db >= (max_tone_db - 9.0)]
 
     return tones
 

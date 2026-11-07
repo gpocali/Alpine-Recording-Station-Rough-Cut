@@ -27,4 +27,4 @@ if (-not $NoBrowser) {
     } -ArgumentList $url | Out-Null
 }
 
-& $venvPython -m uvicorn backend.main:app --host 127.0.0.1 --port $Port
+& $venvPython -m uvicorn backend.main:app --host 127.0.0.1 --port $Port --reload

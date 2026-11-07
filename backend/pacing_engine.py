@@ -150,6 +150,17 @@ def classify_grammatical_pause(
     return "period", round(cadence.period_pause_ms * local_tempo_ratio, 1)
 
 
+def _format_words_text(words) -> str:
+    parts: List[str] = []
+    for w in words:
+        tok = f"{w.word}{w.punctuation_after}"
+        if parts and tok.startswith("-"):
+            parts[-1] = f"{parts[-1]}{tok}"
+        else:
+            parts.append(tok)
+    return " ".join(parts).strip()
+
+
 def _split_take_on_removed_breaths_or_long_hesitations(
     take: TakeCandidate,
     removed_breaths: List[BreathOrNoiseEvent],
@@ -199,7 +210,7 @@ def _split_take_on_removed_breaths_or_long_hesitations(
         if should_cut_internal and w_next.start > w_curr.end:
             c_start = max(take.trimmed_start, chunk_words[0].start - 0.012)
             c_end = min(take.trimmed_end, w_curr.end + 0.015)
-            c_text = " ".join(f"{w.word}{w.punctuation_after}" for w in chunk_words).strip()
+            c_text = _format_words_text(chunk_words)
             p_type, p_ms = classify_grammatical_pause(
                 w_curr.punctuation_after, cadence, local_tempo_ratio
             )
@@ -211,7 +222,7 @@ def _split_take_on_removed_breaths_or_long_hesitations(
     # Final sub-clip of the take
     c_start = max(take.trimmed_start, chunk_words[0].start - 0.012)
     c_end = take.trimmed_end
-    c_text = " ".join(f"{w.word}{w.punctuation_after}" for w in chunk_words).strip()
+    c_text = _format_words_text(chunk_words)
     term_punct = chunk_words[-1].punctuation_after or take.terminal_punctuation or "."
     p_type, p_ms = classify_grammatical_pause(term_punct, cadence, local_tempo_ratio)
     if take.custom_pause_after_ms is not None:

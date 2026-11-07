@@ -24,4 +24,4 @@ if [ "${NO_BROWSER:-0}" != "1" ]; then
     ) &
 fi
 
-exec "$VENV_PY" -m uvicorn backend.main:app --host 127.0.0.1 --port "$PORT"
+exec "$VENV_PY" -m uvicorn backend.main:app --host 127.0.0.1 --port "$PORT" --reload

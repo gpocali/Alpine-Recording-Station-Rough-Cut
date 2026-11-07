@@ -6,12 +6,11 @@ import json
 import math
 import os
 import re
-import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
-import soundfile as sf
+from scipy import signal
 
 from backend.models import TalkbackInterval, WordToken
 
@@ -195,6 +194,22 @@ def _detect_voiced_islands(
     return islands
 
 
+def _resample_to_16k_float32(signal_1d: np.ndarray, sample_rate: int) -> np.ndarray:
+    """
+    Convert an arbitrary-rate 1D audio array into a 16,000 Hz float32 1D NumPy array
+    for direct in-memory consumption by faster-whisper (bypassing PyAV file decoding).
+    """
+    if len(signal_1d) == 0:
+        return np.zeros(0, dtype=np.float32)
+    if sample_rate == 16000:
+        return np.asarray(signal_1d, dtype=np.float32)
+    gcd = math.gcd(16000, int(sample_rate))
+    up = 16000 // gcd
+    down = int(sample_rate) // gcd
+    resampled = signal.resample_poly(signal_1d, up, down)
+    return np.asarray(resampled, dtype=np.float32)
+
+
 def _fallback_script_or_acoustic_tokens(
     vo_signal: np.ndarray,
     sample_rate: int,
@@ -203,9 +218,8 @@ def _fallback_script_or_acoustic_tokens(
     source_path: str = "",
 ) -> Tuple[List[WordToken], Dict[str, str]]:
     """
-    Fallback token alignment when running offline without Whisper model weights or on synthetic audio.
-    1. Checks if a sidecar `.transcript.json` exists next to `source_path`.
-    2. Otherwise aligns `reference_script` (or synthesized phrase tokens) to acoustic speech islands.
+    Fallback token alignment when running on synthetic demo audio (via sidecar `.transcript.json`)
+    or when a reference script is provided without a speech model.
     """
     if source_path:
         sidecar = Path(f"{source_path}.transcript.json")
@@ -225,7 +239,6 @@ def _fallback_script_or_acoustic_tokens(
     if not islands:
         return [], {}
 
-    # Split reference script into sentences/clauses or generate placeholder words per island
     script_clauses: List[str] = []
     if reference_script.strip():
         raw_parts = re.split(r"(?<=[.!?])\s+", reference_script.strip())
@@ -236,7 +249,7 @@ def _fallback_script_or_acoustic_tokens(
         if script_clauses:
             clause = script_clauses[min(idx, len(script_clauses) - 1)]
         else:
-            clause = "Welcome to the Alpine Recording Station, where every voiceover sounds clear."
+            clause = f"[Segment {idx + 1}]."
         raw_words = [w for w in clause.split() if w.strip()]
         if not raw_words:
             continue
@@ -255,7 +268,7 @@ def _fallback_script_or_acoustic_tokens(
                     word=w_clean or rw,
                     start=round(ws, 4),
                     end=round(we, 4),
-                    probability=0.94,
+                    probability=0.90,
                     punctuation_after=punct,
                 )
             )
@@ -276,7 +289,7 @@ def transcribe_voiceover_and_talkback(
     Transcribe the isolated voiceover track into word-level tokens with punctuation,
     and transcribe Studio Mode talkback notes (between audio tones) into director hints.
     """
-    # Check sidecar first if available (provides deterministic ground-truth for demo/test audio)
+    # 1. Check sidecar first ONLY if it exists for built-in synthetic demo files
     if source_path:
         for candidate in (Path(f"{source_path}.transcript.json"), Path(source_path).with_suffix(".transcript.json")):
             if candidate.exists():
@@ -284,7 +297,7 @@ def transcribe_voiceover_and_talkback(
                     payload = json.loads(candidate.read_text(encoding="utf-8"))
                     words = [WordToken(**w) for w in payload.get("words", [])]
                     tb_map: Dict[str, str] = payload.get("talkback_transcripts", {})
-                    tb_list: List[ str ] = payload.get("talkback_notes_ordered", [])
+                    tb_list: List[str] = payload.get("talkback_notes_ordered", [])
                     for i, tb in enumerate(talkback_intervals):
                         note_txt = tb_map.get(tb.id, "")
                         if not note_txt and i < len(tb_list):
@@ -302,13 +315,15 @@ def transcribe_voiceover_and_talkback(
     words: List[WordToken] = []
 
     if model is not None and len(vo_signal) > 0:
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-            tmp_path = tmp.name
         try:
-            sf.write(tmp_path, vo_signal, sample_rate, subtype="PCM_16")
-            initial_prompt = reference_script[:400] if reference_script.strip() else "Voiceover studio session with punctuation, commas, and periods."
+            vo_16k = _resample_to_16k_float32(vo_signal, sample_rate)
+            initial_prompt = (
+                reference_script[:400]
+                if reference_script.strip()
+                else "Voiceover studio session with punctuation, commas, and periods."
+            )
             segments, _ = model.transcribe(
-                tmp_path,
+                vo_16k,
                 word_timestamps=True,
                 vad_filter=True,
                 initial_prompt=initial_prompt,
@@ -335,29 +350,21 @@ def transcribe_voiceover_and_talkback(
                     )
         except Exception:
             words = []
-        finally:
-            if os.path.exists(tmp_path):
-                try:
-                    os.remove(tmp_path)
-                except OSError:
-                    pass
 
-        # Transcribe talkback intervals on the right channel
+        # Transcribe talkback intervals on the right channel directly via in-memory 16kHz float32 array
         if right_channel is not None and talkback_intervals:
             for tb in talkback_intervals:
                 s_idx = max(0, int(tb.note_start * sample_rate))
                 e_idx = min(len(right_channel), int(tb.note_end * sample_rate))
                 if e_idx - s_idx > int(0.15 * sample_rate):
                     tb_slice = right_channel[s_idx:e_idx]
-                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tb_tmp:
-                        tb_wav = tb_tmp.name
                     try:
-                        sf.write(tb_wav, tb_slice, sample_rate, subtype="PCM_16")
+                        tb_16k = _resample_to_16k_float32(tb_slice, sample_rate)
                         tb_segs, _ = model.transcribe(
-                            tb_wav,
+                            tb_16k,
                             word_timestamps=False,
                             vad_filter=False,
-                            initial_prompt="Director talkback note: redo that line, keep take one, take two was best, moving on.",
+                            initial_prompt="Director talkback note: redo that line, keep take one, the first take was better, moving on.",
                         )
                         tb_text = " ".join(s.text.strip() for s in tb_segs if s.text.strip()).strip()
                         tb.transcript = tb_text
@@ -366,12 +373,6 @@ def transcribe_voiceover_and_talkback(
                         tb.target_take_number = t_num
                     except Exception:
                         pass
-                    finally:
-                        if os.path.exists(tb_wav):
-                            try:
-                                os.remove(tb_wav)
-                            except OSError:
-                                pass
 
     if not words:
         words, tb_map = _fallback_script_or_acoustic_tokens(
